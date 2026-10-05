@@ -51,4 +51,7 @@ REGISTRY = {
 }
 
 # Every problem in these DSA topics must have an animation; build.py enforces it.
-REQUIRED_TOPICS = {"dp"}
+# Problems without a hand-written one above get one traced by auto.py.
+REQUIRED_TOPICS = {"dp", "trees", "heap", "backtracking", "hashing", "sorting", "sliding-window",
+                   "monotonic-stack", "binary-search", "linked-lists", "trie", "union-find", "bits",
+                   "greedy", "math", "graphs", "range-query", "string-algorithms"}

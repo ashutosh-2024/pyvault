@@ -118,7 +118,9 @@
   if (p.viz) {
     var nCh = p.viz.chapters.length;
     html += '<details class="reveal viz-reveal" id="viz-reveal">' +
-      "<summary>Watch the algorithm run &mdash; " + nCh + " chapter" + (nCh === 1 ? "" : "s") + ", " +
+      "<summary>" + (p.viz.traced
+        ? "Watch " + (nCh === 1 ? "the approach" : "every approach") + " run &mdash; " + nCh + " approach" + (nCh === 1 ? "" : "es") + ", "
+        : "Watch the algorithm run &mdash; " + nCh + " chapter" + (nCh === 1 ? "" : "s") + ", ") +
         p.viz.frames + " steps <span class=\"viz-spoiler\">(shows the solution)</span></summary>" +
       '<div class="reveal-inner"><div id="viz"><p class="viz-loading">Loading animation&hellip;</p></div></div>' +
     "</details>";
@@ -193,6 +195,26 @@
     "</div>";
   }
 
+  /* a detailed write-up (content/explain/): idea and steps before the code,
+     why it works and a dry run on the problem's shared example after it */
+  function bullets(title, list, cls) {
+    return '<div class="ex-part' + (cls ? " " + cls : "") + '"><h4>' + title + "</h4><ul>" +
+      list.map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ul></div>";
+  }
+  function explainTop(e) {
+    return '<div class="explain">' + bullets("The idea", e.idea) + bullets("Step by step", e.steps) + "</div>";
+  }
+  function explainBottom(e) {
+    var ex = p.example;
+    var call = ex ? (ex.setup ? ex.setup + "\n" : "") + ex.call : "";
+    return '<div class="explain">' + bullets("Why it works", e.why) +
+      '<div class="ex-part ex-dry"><h4>Dry run</h4>' +
+        (ex ? '<pre class="code ex-call"><code>' + hl(call) + "</code></pre>" : "") +
+        "<ol>" + e.dry.map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ol>" +
+        (ex ? '<p class="ex-result">Returns <code>' + esc(ex.expect) + "</code> &mdash; checked by the build.</p>" : "") +
+      "</div></div>";
+  }
+
   html += "<h2>" + (ladder ? "From recursion to optimal" : "Solutions") + "</h2>";
   html += p.approaches.map(function (a, i) {
     var card = '<div class="approach' + (a.best ? " is-best" : "") + '">' +
@@ -209,8 +231,9 @@
         "<div><b>time</b><span>" + a.time + "</span></div>" +
         "<div><b>aux space</b><span>" + a.space + "</span></div>" +
       "</div>" +
+      (a.explain ? explainTop(a.explain) : "") +
       '<pre class="code"><code>' + hl(a.code) + "</code></pre>" +
-      '<div class="why">' + points(a.why) + "</div>" +
+      (a.explain ? explainBottom(a.explain) : '<div class="why">' + points(a.why) + "</div>") +
     "</div>";
     return card + (ladder && i === 0 ? recurrenceBlock(p.recurrence) : "");
   }).join("");

@@ -1397,3 +1397,71 @@ kbd {
 .vz-swatch.no { background: transparent; }
 .vz-swatch.chosen { background: color-mix(in srgb, var(--green) 55%, var(--bg)); border-color: var(--green); }
 .viz-loading { font-family: var(--mono); font-size: 0.8rem; color: var(--text-faint); padding: 24px 0; text-align: center; }
+
+/* ---------- traced animations (content/viz/auto.py) ---------- */
+.viz-body.viz-traced { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: start; }
+.viz-body.viz-traced .viz-stage { min-width: 0; }
+.viz-body.viz-traced.viz-wide { grid-template-columns: 1fr; }
+.viz-body.viz-wide .viz-code { margin: 0 14px 6px; max-height: 260px; }
+.viz-code {
+  margin: 14px 14px 6px 0; padding: 10px 0; max-height: 420px; overflow: auto;
+  background: var(--bg-2); border: var(--bw-thin) solid var(--line-2);
+  font-family: var(--mono); font-size: 0.74rem; line-height: 1.55; white-space: pre;
+}
+.vc-line { display: block; padding: 0 12px 0 0; border-left: 3px solid transparent; transition: background .2s; }
+.vc-line.on { background: color-mix(in srgb, var(--accent) 24%, transparent); border-left-color: var(--accent); }
+.vc-n { display: inline-block; width: 30px; padding-right: 8px; text-align: right; color: var(--text-faint); user-select: none; }
+@media (max-width: 760px) {
+  .viz-body.viz-traced { grid-template-columns: 1fr; }
+  .viz-code { margin: 0 14px 6px; max-height: 220px; }
+}
+.viz-scene .vz-s, .viz-scene .vz-node, .viz-scene .vz-ptr, .viz-scene text { transition: transform .38s ease; }
+.vz-gc rect { rx: 3; }
+.vz-node circle { fill: var(--bg); stroke: var(--text-faint); stroke-width: 2; transition: fill .3s, stroke .3s; }
+.vz-node.cur circle { fill: var(--accent); stroke: var(--line); stroke-width: 3; }
+.vz-node.src circle { fill: color-mix(in srgb, var(--accent) 22%, var(--bg)); stroke: var(--accent); stroke-width: 3; }
+.vz-node.stack circle { stroke: var(--accent); stroke-width: 3; stroke-dasharray: 5 3; }
+.vz-node.done circle { fill: var(--bg-2); stroke: var(--text-dim); }
+.vz-node.path circle { fill: color-mix(in srgb, var(--accent) 45%, var(--bg)); stroke: var(--accent); }
+.vz-node.answer circle { fill: color-mix(in srgb, var(--green) 40%, var(--bg)); stroke: var(--green); stroke-width: 3; }
+.vz-ntxt { font-family: var(--mono); font-size: 14px; font-weight: 700; fill: var(--text); }
+.vz-node.cur .vz-ntxt { fill: var(--ink); }
+.vz-ntxt.vz-sm { font-size: 11px; }
+.vz-ntxt.vz-xs { font-size: 9px; }
+.vz-tag { font-family: var(--mono); font-size: 11px; font-weight: 700; fill: var(--accent-fg); }
+.vz-edge { fill: none; stroke: var(--text-faint); stroke-width: 2; }
+.vz-edge.alt { stroke: var(--accent-fg); stroke-dasharray: 5 4; }
+.vz-ehead { fill: var(--text-faint); }
+.vz-edge.vz-moved, .vz-elabel.vz-moved { animation: vz-fade .25s ease .33s both; }
+.vz-gc .vz-txt { font-size: 14px; }
+.vz-elabel { font-family: var(--mono); font-size: 11px; fill: var(--text-dim); }
+.vz-ptr { font-family: var(--mono); font-size: 11px; font-weight: 700; fill: var(--accent-fg); }
+.vz-empty { font-family: var(--mono); font-size: 13px; fill: var(--text-faint); }
+.vz-s.cur rect { fill: var(--accent); }
+.viz-vars { margin: 2px 14px 0; font-family: var(--mono); font-size: 0.74rem; }
+.vv-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.vv { padding: 2px 8px; border: var(--bw-thin) solid var(--line-2); color: var(--text-dim); background: var(--bg-2); transition: background .25s; }
+.vv b { color: var(--text); font-weight: 700; }
+.vv.on { background: color-mix(in srgb, var(--accent) 28%, var(--bg)); border-color: var(--accent); }
+.vv-stack { margin-bottom: 6px; color: var(--text-dim); }
+.vv-stack code { font-size: 0.72rem; }
+.vv-h { text-transform: uppercase; letter-spacing: .06em; font-size: 0.64rem; color: var(--text-faint); margin-right: 8px; }
+.vv-sep { margin: 0 6px; color: var(--text-faint); }
+@media (prefers-reduced-motion: reduce) {
+  .viz-scene .vz-s, .viz-scene .vz-node, .viz-scene .vz-ptr, .viz-scene text, .vc-line { transition: none; }
+}
+
+/* ---------- approach write-ups (content/explain/) ---------- */
+.explain { margin: 4px 0 16px; }
+.ex-part h4 {
+  font-family: var(--mono); font-size: 0.7rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent-fg); margin: 16px 0 8px;
+}
+.ex-part ul, .ex-part ol { margin: 0; padding-left: 22px; color: var(--text-dim); font-size: 0.94rem; line-height: 1.6; }
+.ex-part li { margin: 0 0 7px; padding-left: 2px; }
+.ex-part li::marker { color: var(--text-faint); }
+.ex-dry ol li::marker { font-family: var(--mono); font-size: 0.8rem; color: var(--accent-fg); }
+.ex-dry { border-left: 3px solid var(--accent); padding: 2px 0 4px 14px; margin-top: 18px; }
+.ex-dry h4 { margin-top: 8px; }
+.ex-call { margin: 0 0 12px; }
+.ex-result { margin: 10px 0 0; font-size: 0.9rem; color: var(--text-dim); }

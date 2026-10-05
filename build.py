@@ -127,6 +127,25 @@ def check_viz(pid: str, v: dict, classes: set) -> dict:
             for tag in re.findall(r"</?(\w+)", fr["caption"]):
                 if tag not in ALLOWED_TAGS:
                     fail(f"{where}: unexpected <{tag}> in caption")
+            if "panels" in fr:                       # traced frame (content/viz/auto.py)
+                if "code" not in ch or not isinstance(fr.get("line"), int):
+                    fail(f"{where}: traced frame needs the chapter's code and a line")
+                for pn in fr["panels"]:
+                    if pn["t"] == "arr":
+                        if len(pn["v"]) != len(pn["cls"]) or set(pn["cls"]) - classes:
+                            fail(f"{where}: bad array panel {pn['id']!r}")
+                    elif pn["t"] == "grid":
+                        if len(pn["v"]) != len(pn["cls"]) or {c for r in pn["cls"] for c in r} - classes:
+                            fail(f"{where}: bad grid panel {pn['id']!r}")
+                    elif pn["t"] == "net":
+                        keys = {n[0] for n in pn["nodes"]}
+                        if {n[4] for n in pn["nodes"]} - classes:
+                            fail(f"{where}: unknown node classes in {pn['id']!r}")
+                        if any(e[0] not in keys or e[1] not in keys for e in pn["edges"]):
+                            fail(f"{where}: edge to a node not drawn in {pn['id']!r}")
+                    else:
+                        fail(f"{where}: unknown panel type {pn['t']!r}")
+                continue
             g = fr.get("grid")
             if g:
                 rows, cols = len(g["v"]), len(g["v"][0])
@@ -157,18 +176,64 @@ def write_viz(pid: str, v: dict) -> dict:
     body = json.dumps(v, ensure_ascii=False, separators=(",", ":"))
     (VIZ_DIR / f"{pid}.json").write_text(body, encoding="utf-8")
     digest = hashlib.sha256(body.encode()).hexdigest()[:8]
-    return {
+    stub = {
         "src": f"assets/viz/{pid}.json?v={digest}",
         "chapters": [c["title"] for c in v["chapters"]],
         "frames": sum(len(c["frames"]) for c in v["chapters"]),
     }
+    if all("code" in c for c in v["chapters"]):
+        stub["traced"] = True                    # one chapter per approach, traced by content/viz/auto.py
+    return stub
+
+
+def trace_all(content, skip) -> dict:
+    """Animations traced from real runs (content/viz/auto.py) for every problem
+    without a hand-written one, one chapter per approach. Runs in parallel."""
+    from concurrent.futures import ProcessPoolExecutor
+    from viz import auto
+    jobs = []
+    for topic in content.TOPICS:
+        head = content.PRELUDE + "\n\n" + topic.get("prelude", "")
+        for section in topic.get("sections", []):
+            for prob in section["problems"]:
+                if prob["id"] in skip:
+                    continue
+                jobs.append(dict(id=prob["id"], head=head, tests=prob["tests"],
+                                 small_tests=prob.get("small_tests", ""),
+                                 approaches=[{k: ap.get(k) for k in ("name", "code", "small", "time", "space")}
+                                             for ap in prob["approaches"]]))
+    # cache by (tracer source, problem) so an unchanged problem is not traced again
+    cache_dir = ROOT / ".viz-cache"
+    cache_dir.mkdir(exist_ok=True)
+    salt = hashlib.sha256(pathlib.Path(auto.__file__).read_bytes()).hexdigest()
+    results, todo = {}, []
+    for j in jobs:
+        key = hashlib.sha256((salt + json.dumps(j, sort_keys=True)).encode()).hexdigest()[:20]
+        f = cache_dir / f"{j['id']}-{key}.json"
+        if f.exists():
+            results[j["id"]] = json.loads(f.read_text(encoding="utf-8"))
+        else:
+            todo.append((j, f))
+    if todo:
+        with ProcessPoolExecutor() as pool:
+            for (j, f), v in zip(todo, pool.map(auto.build_problem, [j for j, _ in todo], chunksize=4)):
+                f.write_text(json.dumps(v, ensure_ascii=False), encoding="utf-8")
+                results[j["id"]] = v
+    live = {f"{j['id']}-{hashlib.sha256((salt + json.dumps(j, sort_keys=True)).encode()).hexdigest()[:20]}.json" for j in jobs}
+    for f in cache_dir.glob("*.json"):
+        if f.name not in live:
+            f.unlink()
+    return results
 
 
 def build_dsa() -> int:
     """Execute every DSA solution against its tests and emit dsa-data.js."""
     import dsa as content
     import viz
+    from explain import EXPLAIN, PARTS
     viz_count = 0
+    explained, unexplained = 0, []
+    traced = trace_all(content, set(viz.REGISTRY))
 
     cache_path = ROOT / "content" / "leetcode.json"
     cache = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path.exists() else {}
@@ -203,6 +268,21 @@ def build_dsa() -> int:
 
                 approaches = []
                 head = content.PRELUDE + "\n\n" + topic.get("prelude", "")
+                ex = EXPLAIN.get(prob["id"], {})
+                ex_aps = ex.get("approaches", {})
+                unknown = set(ex_aps) - {ap["name"] for ap in prob["approaches"]}
+                if unknown:
+                    raise SystemExit(f"{prob['id']}: write-up for unknown approach(es) {sorted(unknown)}")
+                example = ex.get("example")
+                check_example = ""
+                if ex_aps:
+                    if not example or not example.get("call") or "expect" not in example:
+                        raise SystemExit(f"{prob['id']}: write-ups need an example with call and expect")
+                    check_example = (example.get("setup", "") + "\n" +
+                                     f"__ex = ({example['call']})\n"
+                                     f"assert __ex == ({example['expect']}), "
+                                     f"'dry-run example returned %r, the write-up says ' % (__ex,) + "
+                                     f"{example['expect']!r}\n")
                 for ap in prob["approaches"]:
                     # Exponential brute force can't run the full tests in time,
                     # so it is checked against the problem's smaller set.
@@ -212,7 +292,8 @@ def build_dsa() -> int:
                         if not tests:
                             raise SystemExit(
                                 f"{prob['id']} / {ap['name']}: small=True but no small_tests")
-                    src = head + "\n\n" + ap["code"] + "\n\n" + tests + "\n"
+                    src = head + "\n\n" + ap["code"] + "\n\n" + tests + "\n" + \
+                        (check_example if ap["name"] in ex_aps else "")
                     safe = re.sub(r"[^a-z0-9]+", "_",
                                   ap["name"].lower()).strip("_")[:40]
                     case = f"{prob['id'].replace('-', '_')}__{safe}"
@@ -221,6 +302,18 @@ def build_dsa() -> int:
                         raise SystemExit(
                             f"\nDSA check failed: {prob['name']} / {ap['name']}\n{out}")
                     checked += 1
+                    write_up = ex_aps.get(ap["name"])
+                    if write_up:
+                        for part in PARTS:
+                            if not write_up.get(part):
+                                raise SystemExit(f"{prob['id']} / {ap['name']}: write-up has no {part!r}")
+                            for pt in write_up[part]:
+                                for tag in re.findall(r"</?(\w+)", pt):
+                                    if tag not in ALLOWED_TAGS:
+                                        raise SystemExit(f"{prob['id']} / {ap['name']}: unexpected <{tag}> in {part}")
+                        explained += 1
+                    else:
+                        unexplained.append(f"{prob['id']} / {ap['name']}")
                     approaches.append({
                         "name": ap["name"],
                         "time": ap["time"],
@@ -230,6 +323,7 @@ def build_dsa() -> int:
                         "best": bool(ap.get("best")),
                         "tag": ap.get("tag", ""),
                         "change": ap.get("change", ""),
+                        "explain": {p: write_up[p] for p in PARTS} if write_up else None,
                     })
 
                 total += 1
@@ -261,6 +355,8 @@ def build_dsa() -> int:
                     "sectionTitle": section["title"],
                     "ref": ({"label": prob["ref"][0], "url": prob["ref"][1]}
                             if prob.get("ref") else None),
+                    "example": ({"call": example["call"], "setup": example.get("setup", ""),
+                                 "expect": example["expect"]} if ex_aps else None),
                 }
                 expect = f"https://leetcode.com/problems/{slug}/" if slug else ""
                 if built["url"] != expect:
@@ -276,6 +372,9 @@ def build_dsa() -> int:
                         f"problems must supply their own `statement=[...]`.")
                 if prob["id"] in viz.REGISTRY:
                     built["viz"] = write_viz(prob["id"], check_viz(prob["id"], viz.REGISTRY[prob["id"]](), viz.CELL_CLASSES))
+                    viz_count += 1
+                elif prob["id"] in traced:
+                    built["viz"] = write_viz(prob["id"], check_viz(prob["id"], traced[prob["id"]], viz.CELL_CLASSES))
                     viz_count += 1
                 problems.append(built)
                 flat.append(built)
@@ -311,8 +410,12 @@ def build_dsa() -> int:
             missing = [p["id"] for p in t["problems"] if "viz" not in p]
             if missing:
                 raise SystemExit(f"{t['id']}: problems without an animation in content/viz/: {missing}")
+    if unexplained:
+        raise SystemExit(f"{len(unexplained)} approaches have no write-up in content/explain/: "
+                         f"{unexplained[:10]}")
     print(f"built {len(topics)} DSA topics, {total} problems, "
-          f"{checked} solutions executed, {viz_count} animated -> {OUT_DSA.relative_to(ROOT)}")
+          f"{checked} solutions executed, {explained} written up, {viz_count} animated "
+          f"-> {OUT_DSA.relative_to(ROOT)}")
     return total
 
 
