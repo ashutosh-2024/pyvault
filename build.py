@@ -169,16 +169,68 @@ def check_viz(pid: str, v: dict, classes: set) -> dict:
 VIZ_DIR = ROOT / "assets" / "viz"
 
 
-def write_viz(pid: str, v: dict) -> dict:
+MIN_EXAMPLES = 2          # worked examples per problem, each dry-run by every approach
+MIN_POINTS = 8            # idea + steps + why pointers per approach
+MIN_DRY = 3               # lines per dry run
+MIN_FAQ = 3               # questions per approach
+
+
+def explain_examples(entry: dict) -> list:
+    """The worked examples of a write-up (content/explain/)."""
+    return entry.get("examples") or []
+
+
+def check_write_up(where: str, w: dict, n_examples: int) -> dict:
+    """Validate one approach's write-up and return it in the shape problem.js renders."""
+    def tags(part, text):
+        for tag in re.findall(r"</?(\w+)", text):
+            if tag not in ALLOWED_TAGS:
+                raise SystemExit(f"{where}: unexpected <{tag}> in {part}")
+    for part in ("idea", "steps", "why", "dry"):
+        if not w.get(part):
+            raise SystemExit(f"{where}: write-up has no {part!r}")
+    if isinstance(w["dry"][0], str):
+        raise SystemExit(f"{where}: 'dry' must be one list of lines per worked example")
+    dry, faq = w["dry"], w.get("faq", [])
+    points = len(w["idea"]) + len(w["steps"]) + len(w["why"])
+    if points < MIN_POINTS:
+        raise SystemExit(f"{where}: {points} pointers in idea/steps/why, want at least {MIN_POINTS}")
+    if len(dry) != n_examples:
+        raise SystemExit(f"{where}: {len(dry)} dry runs for {n_examples} worked examples")
+    for k, run in enumerate(dry, 1):
+        if len(run) < MIN_DRY:
+            raise SystemExit(f"{where}: dry run {k} has {len(run)} lines, want at least {MIN_DRY}")
+    if len(faq) < MIN_FAQ:
+        raise SystemExit(f"{where}: {len(faq)} FAQ entries, want at least {MIN_FAQ}")
+    for qa in faq:
+        if len(qa) != 2 or not all(isinstance(x, str) and x for x in qa):
+            raise SystemExit(f"{where}: an FAQ entry must be [question, answer]")
+    for part in ("idea", "steps", "why"):
+        for t in w[part]:
+            tags(part, t)
+    for run in dry:
+        for t in run:
+            tags("dry", t)
+    for q, a in faq:
+        tags("faq", q)
+        tags("faq", a)
+    return {"idea": w["idea"], "steps": w["steps"], "why": w["why"],
+            "dry": dry, "faq": [list(qa) for qa in faq]}
+
+
+def write_viz(pid: str, v: dict, name: str = "") -> dict:
     """Write one animation to assets/viz/<id>.json (fetched only when a reader opens
     it) and return the small stub stored on the problem."""
     VIZ_DIR.mkdir(exist_ok=True)
     body = json.dumps(v, ensure_ascii=False, separators=(",", ":"))
-    (VIZ_DIR / f"{pid}.json").write_text(body, encoding="utf-8")
+    name = name or pid
+    (VIZ_DIR / f"{name}.json").write_text(body, encoding="utf-8")
     digest = hashlib.sha256(body.encode()).hexdigest()[:8]
     stub = {
-        "src": f"assets/viz/{pid}.json?v={digest}",
+        "src": f"assets/viz/{name}.json?v={digest}",
         "chapters": [c["title"] for c in v["chapters"]],
+        "steps": [len(c["frames"]) for c in v["chapters"]],
+        "examples": [c.get("example") for c in v["chapters"]],
         "frames": sum(len(c["frames"]) for c in v["chapters"]),
     }
     if all("code" in c for c in v["chapters"]):
@@ -186,9 +238,10 @@ def write_viz(pid: str, v: dict) -> dict:
     return stub
 
 
-def trace_all(content, skip) -> dict:
-    """Animations traced from real runs (content/viz/auto.py) for every problem
-    without a hand-written one, one chapter per approach. Runs in parallel."""
+def trace_all(content, explain) -> dict:
+    """Animations traced from real runs (content/viz/auto.py) for every problem,
+    one chapter per approach, each on the write-up's worked examples where they
+    fit. Runs in parallel."""
     from concurrent.futures import ProcessPoolExecutor
     from viz import auto
     jobs = []
@@ -196,10 +249,9 @@ def trace_all(content, skip) -> dict:
         head = content.PRELUDE + "\n\n" + topic.get("prelude", "")
         for section in topic.get("sections", []):
             for prob in section["problems"]:
-                if prob["id"] in skip:
-                    continue
                 jobs.append(dict(id=prob["id"], head=head, tests=prob["tests"],
                                  small_tests=prob.get("small_tests", ""),
+                                 examples=explain_examples(explain.get(prob["id"], {})),
                                  approaches=[{k: ap.get(k) for k in ("name", "code", "small", "time", "space")}
                                              for ap in prob["approaches"]]))
     # cache by (tracer source, problem) so an unchanged problem is not traced again
@@ -230,10 +282,10 @@ def build_dsa() -> int:
     """Execute every DSA solution against its tests and emit dsa-data.js."""
     import dsa as content
     import viz
-    from explain import EXPLAIN, PARTS
+    from explain import EXPLAIN
     viz_count = 0
     explained, unexplained = 0, []
-    traced = trace_all(content, set(viz.REGISTRY))
+    traced = trace_all(content, EXPLAIN)
 
     cache_path = ROOT / "content" / "leetcode.json"
     cache = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path.exists() else {}
@@ -273,16 +325,20 @@ def build_dsa() -> int:
                 unknown = set(ex_aps) - {ap["name"] for ap in prob["approaches"]}
                 if unknown:
                     raise SystemExit(f"{prob['id']}: write-up for unknown approach(es) {sorted(unknown)}")
-                example = ex.get("example")
-                check_example = ""
-                if ex_aps:
-                    if not example or not example.get("call") or "expect" not in example:
-                        raise SystemExit(f"{prob['id']}: write-ups need an example with call and expect")
-                    check_example = (example.get("setup", "") + "\n" +
-                                     f"__ex = ({example['call']})\n"
-                                     f"assert __ex == ({example['expect']}), "
-                                     f"'dry-run example returned %r, the write-up says ' % (__ex,) + "
-                                     f"{example['expect']!r}\n")
+                examples = explain_examples(ex)
+                if ex_aps and len(examples) < MIN_EXAMPLES:
+                    raise SystemExit(f"{prob['id']}: write-ups need {MIN_EXAMPLES} worked examples, "
+                                     f"each with call and expect")
+                for e in examples:
+                    if not e.get("call") or "expect" not in e:
+                        raise SystemExit(f"{prob['id']}: every worked example needs call and expect")
+                check_example = "".join(
+                    (e.get("setup", "") + "\n" +
+                     f"__ex = ({e['call']})\n"
+                     f"assert __ex == ({e['expect']}), "
+                     f"'worked example {k} returned %r, the write-up says ' % (__ex,) + "
+                     f"{e['expect']!r}\n")
+                    for k, e in enumerate(examples, 1))
                 for ap in prob["approaches"]:
                     # Exponential brute force can't run the full tests in time,
                     # so it is checked against the problem's smaller set.
@@ -304,13 +360,7 @@ def build_dsa() -> int:
                     checked += 1
                     write_up = ex_aps.get(ap["name"])
                     if write_up:
-                        for part in PARTS:
-                            if not write_up.get(part):
-                                raise SystemExit(f"{prob['id']} / {ap['name']}: write-up has no {part!r}")
-                            for pt in write_up[part]:
-                                for tag in re.findall(r"</?(\w+)", pt):
-                                    if tag not in ALLOWED_TAGS:
-                                        raise SystemExit(f"{prob['id']} / {ap['name']}: unexpected <{tag}> in {part}")
+                        write_up = check_write_up(f"{prob['id']} / {ap['name']}", write_up, len(examples))
                         explained += 1
                     else:
                         unexplained.append(f"{prob['id']} / {ap['name']}")
@@ -323,7 +373,7 @@ def build_dsa() -> int:
                         "best": bool(ap.get("best")),
                         "tag": ap.get("tag", ""),
                         "change": ap.get("change", ""),
-                        "explain": {p: write_up[p] for p in PARTS} if write_up else None,
+                        "explain": write_up or None,
                     })
 
                 total += 1
@@ -355,8 +405,8 @@ def build_dsa() -> int:
                     "sectionTitle": section["title"],
                     "ref": ({"label": prob["ref"][0], "url": prob["ref"][1]}
                             if prob.get("ref") else None),
-                    "example": ({"call": example["call"], "setup": example.get("setup", ""),
-                                 "expect": example["expect"]} if ex_aps else None),
+                    "worked": [{"call": e["call"], "setup": e.get("setup", ""), "expect": e["expect"]}
+                                 for e in examples] if ex_aps else [],
                 }
                 expect = f"https://leetcode.com/problems/{slug}/" if slug else ""
                 if built["url"] != expect:
@@ -371,10 +421,13 @@ def build_dsa() -> int:
                         f"{prob['id']}: no statement. Premium or non-LeetCode "
                         f"problems must supply their own `statement=[...]`.")
                 if prob["id"] in viz.REGISTRY:
-                    built["viz"] = write_viz(prob["id"], check_viz(prob["id"], viz.REGISTRY[prob["id"]](), viz.CELL_CLASSES))
-                    viz_count += 1
-                elif prob["id"] in traced:
+                    built["vizIntro"] = write_viz(prob["id"], check_viz(prob["id"], viz.REGISTRY[prob["id"]](), viz.CELL_CLASSES),
+                                                  name=f"{prob['id']}-intro")
+                if prob["id"] in traced:
                     built["viz"] = write_viz(prob["id"], check_viz(prob["id"], traced[prob["id"]], viz.CELL_CLASSES))
+                    if len(built["viz"]["chapters"]) != len(approaches):
+                        raise SystemExit(f"{prob['id']}: {len(built['viz']['chapters'])} animation chapters "
+                                         f"for {len(approaches)} approaches")
                     viz_count += 1
                 problems.append(built)
                 flat.append(built)

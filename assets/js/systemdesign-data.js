@@ -1185,7 +1185,7 @@ window.GRAIL_SD = [
             "type": "code",
             "src": "import math, uuid\n\nu = uuid.uuid4()\nprint(u, \"version\", u.version, \"| bits of randomness: 122\")\n\ndef collision_probability(n, bits=122):\n    return -math.expm1(-n * n / (2 * 2 ** bits))     # birthday approximation\n\nfor n in (10**9, 10**12, 10**15, 2**61):\n    print(f\"{n:>22,} ids -> P(any collision) = {collision_probability(n):.2e}\")",
             "label": null,
-            "output": "d71f4e29-a1d6-419d-b100-9522acc9335e version 4 | bits of randomness: 122\n         1,000,000,000 ids -> P(any collision) = 9.40e-20\n     1,000,000,000,000 ids -> P(any collision) = 9.40e-14\n 1,000,000,000,000,000 ids -> P(any collision) = 9.40e-08\n2,305,843,009,213,693,952 ids -> P(any collision) = 3.93e-01",
+            "output": "2a7179ee-9dbd-46a1-967d-3246f8f919d1 version 4 | bits of randomness: 122\n         1,000,000,000 ids -> P(any collision) = 9.40e-20\n     1,000,000,000,000 ids -> P(any collision) = 9.40e-14\n 1,000,000,000,000,000 ids -> P(any collision) = 9.40e-08\n2,305,843,009,213,693,952 ids -> P(any collision) = 3.93e-01",
             "isError": false
           },
           {
@@ -1205,7 +1205,7 @@ window.GRAIL_SD = [
             "type": "code",
             "src": "import os, time, uuid\n\ndef uuid7(ms=None):\n    ms = int(time.time() * 1000) if ms is None else ms\n    rand = int.from_bytes(os.urandom(10), \"big\")\n    value = (ms & ((1 << 48) - 1)) << 80                     # 48-bit timestamp\n    value |= 0x7 << 76                                       # version 7\n    value |= ((rand >> 62) & 0xFFF) << 64                    # 12 random bits\n    value |= 0b10 << 62                                      # RFC variant\n    value |= rand & ((1 << 62) - 1)                          # 62 random bits\n    return uuid.UUID(int=value)\n\nbase = 1_700_000_000_000\nids = [uuid7(base + i) for i in (0, 1, 2, 3)]\nfor u in ids:\n    print(u, \"version\", u.version, \"ms\", u.int >> 80)\nprint(\"sorted by value == creation order:\", sorted(ids) == ids)\nprint(\"v4 ids sorted == creation order?  \", (lambda v: sorted(v) == v)([uuid.uuid4() for _ in range(20)]))",
             "label": null,
-            "output": "018bcfe5-6800-7472-8316-8f30592466a6 version 7 ms 1700000000000\n018bcfe5-6801-7bbc-be5a-2f2fec742791 version 7 ms 1700000000001\n018bcfe5-6802-7d27-801f-0fa44782ca61 version 7 ms 1700000000002\n018bcfe5-6803-7cce-89a6-aed01d766fc5 version 7 ms 1700000000003\nsorted by value == creation order: True\nv4 ids sorted == creation order?   False",
+            "output": "018bcfe5-6800-7ec7-ae2a-2f44673230c4 version 7 ms 1700000000000\n018bcfe5-6801-700b-b7f3-0e1426bb8421 version 7 ms 1700000000001\n018bcfe5-6802-74f7-afec-24b5b8a98331 version 7 ms 1700000000002\n018bcfe5-6803-74f7-8942-95318576eca7 version 7 ms 1700000000003\nsorted by value == creation order: True\nv4 ids sorted == creation order?   False",
             "isError": false
           },
           {
@@ -1245,7 +1245,7 @@ window.GRAIL_SD = [
             "type": "code",
             "src": "import random, uuid, bisect\n\ndef pages_touched(keys, page=100, recent=1000):\n    order = sorted(keys)\n    rank = {k: i for i, k in enumerate(order)}\n    return len({rank[k] // page for k in keys[-recent:]})\n\nn = 100_000\nsequential = list(range(n))\nv4 = [uuid.uuid4().int for _ in range(n)]\nms0, rng = 1_700_000_000_000, random.Random(0)\nv7_like = [((ms0 + i // 10) << 80) | rng.getrandbits(80) for i in range(n)]   # 10 ids per ms\n\nfor name, keys in ((\"auto-increment\", sequential), (\"UUIDv7\", v7_like), (\"UUIDv4\", v4)):\n    print(f\"{name:15} recent inserts touched {pages_touched(keys):4} of {n // 100} pages\")",
             "label": null,
-            "output": "auto-increment  recent inserts touched   10 of 1000 pages\nUUIDv7          recent inserts touched   10 of 1000 pages\nUUIDv4          recent inserts touched  612 of 1000 pages",
+            "output": "auto-increment  recent inserts touched   10 of 1000 pages\nUUIDv7          recent inserts touched   10 of 1000 pages\nUUIDv4          recent inserts touched  635 of 1000 pages",
             "isError": false
           },
           {
@@ -2227,7 +2227,7 @@ window.GRAIL_SD = [
             "type": "code",
             "src": "import time\n\nPOST_CACHE = {f\"p{i}\": {\"id\": f\"p{i}\", \"author\": f\"u{i % 7}\", \"text\": f\"post {i}\"} for i in range(100)}\n\ndef get_one(pid):\n    time.sleep(0.002)                               # one network round trip\n    return POST_CACHE[pid]\n\ndef get_many(pids):\n    time.sleep(0.002)                               # one round trip for the batch\n    return [POST_CACHE[p] for p in pids]\n\nids = [f\"p{i}\" for i in range(50)]\nt = time.perf_counter(); a = [get_one(p) for p in ids]; one_by_one = time.perf_counter() - t\nt = time.perf_counter(); b = get_many(ids); batched = time.perf_counter() - t\nprint(a == b, f\"one by one ~{one_by_one * 1000:.0f} ms vs batched ~{batched * 1000:.0f} ms\")",
             "label": null,
-            "output": "True one by one ~125 ms vs batched ~3 ms",
+            "output": "True one by one ~124 ms vs batched ~3 ms",
             "isError": false
           }
         ]

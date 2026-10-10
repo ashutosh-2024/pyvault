@@ -96,7 +96,7 @@
         rows += '<div class="io"><b>Output</b><code>' + esc(ex.output) + "</code></div>";
       }
       if (ex.explanation) {
-        rows += '<div class="io"><b>Why</b><span>' + esc(ex.explanation) + "</span></div>";
+        rows += '<div class="io"><b>Why</b><span class="io-why' + (/\n.*\S.*\n/.test(ex.explanation) && /  /.test(ex.explanation) ? " io-table" : "") + '">' + esc(ex.explanation) + "</span></div>";
       }
       return '<div class="example"><span class="ex-n">Example ' + (i + 1) + "</span>" +
              rows + "</div>";
@@ -112,18 +112,6 @@
 
   if (p.pitfall) {
     html += '<div class="pitfall"><strong>Common mistake.</strong> ' + p.pitfall + "</div>";
-  }
-
-  /* ---------- step-by-step animation (content/viz/) ---------- */
-  if (p.viz) {
-    var nCh = p.viz.chapters.length;
-    html += '<details class="reveal viz-reveal" id="viz-reveal">' +
-      "<summary>" + (p.viz.traced
-        ? "Watch " + (nCh === 1 ? "the approach" : "every approach") + " run &mdash; " + nCh + " approach" + (nCh === 1 ? "" : "es") + ", "
-        : "Watch the algorithm run &mdash; " + nCh + " chapter" + (nCh === 1 ? "" : "s") + ", ") +
-        p.viz.frames + " steps <span class=\"viz-spoiler\">(shows the solution)</span></summary>" +
-      '<div class="reveal-inner"><div id="viz"><p class="viz-loading">Loading animation&hellip;</p></div></div>' +
-    "</details>";
   }
 
   /* ---------- try it: write and run your own solution ---------- */
@@ -195,8 +183,9 @@
     "</div>";
   }
 
-  /* a detailed write-up (content/explain/): idea and steps before the code,
-     why it works and a dry run on the problem's shared example after it */
+  /* a detailed write-up (content/explain/): idea and steps before the code;
+     why it works, a dry run of every worked example, an FAQ and the approach's
+     own animation after it */
   function bullets(title, list, cls) {
     return '<div class="ex-part' + (cls ? " " + cls : "") + '"><h4>' + title + "</h4><ul>" +
       list.map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ul></div>";
@@ -204,18 +193,48 @@
   function explainTop(e) {
     return '<div class="explain">' + bullets("The idea", e.idea) + bullets("Step by step", e.steps) + "</div>";
   }
-  function explainBottom(e) {
-    var ex = p.example;
+  function dryRun(steps, k) {
+    var ex = p.worked[k];
     var call = ex ? (ex.setup ? ex.setup + "\n" : "") + ex.call : "";
+    return '<div class="ex-part ex-dry"><h4>Dry run' + (p.worked.length > 1 ? " " + (k + 1) : "") + "</h4>" +
+      (ex ? '<pre class="code ex-call"><code>' + hl(call) + "</code></pre>" : "") +
+      "<ol>" + steps.map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ol>" +
+      (ex ? '<p class="ex-result">Returns <code>' + esc(ex.expect) + "</code> &mdash; checked by the build.</p>" : "") +
+    "</div>";
+  }
+  function faq(list) {
+    if (!list.length) return "";
+    return '<div class="ex-part ex-faq"><h4>Common doubts</h4>' +
+      list.map(function (qa) {
+        return '<details class="faq-item"><summary>' + qa[0] + "</summary><p>" + qa[1] + "</p></details>";
+      }).join("") + "</div>";
+  }
+  function explainBottom(e) {
     return '<div class="explain">' + bullets("Why it works", e.why) +
-      '<div class="ex-part ex-dry"><h4>Dry run</h4>' +
-        (ex ? '<pre class="code ex-call"><code>' + hl(call) + "</code></pre>" : "") +
-        "<ol>" + e.dry.map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ol>" +
-        (ex ? '<p class="ex-result">Returns <code>' + esc(ex.expect) + "</code> &mdash; checked by the build.</p>" : "") +
-      "</div></div>";
+      e.dry.map(dryRun).join("") + faq(e.faq) + "</div>";
   }
 
-  html += "<h2>" + (ladder ? "From recursion to optimal" : "Solutions") + "</h2>";
+  /* each approach's animation is one chapter of the problem's traced file */
+  function vizBlock(i) {
+    if (!p.viz || !p.viz.chapters[i]) return "";
+    var steps = p.viz.steps ? p.viz.steps[i] : 0, exN = p.viz.examples ? p.viz.examples[i] : null;
+    if (steps <= 1) return "";
+    return '<details class="reveal viz-reveal ap-viz" data-viz="' + i + '">' +
+      "<summary>Watch this approach run &mdash; " + steps + " steps" +
+        (exN ? " on dry run " + exN : " on one of the tests") + "</summary>" +
+      '<div class="reveal-inner"><div class="viz-host"><p class="viz-loading">Loading animation&hellip;</p></div></div>' +
+    "</details>";
+  }
+  function introVizBlock() {
+    if (!p.vizIntro) return "";
+    return '<details class="reveal viz-reveal" data-viz-intro="1">' +
+      "<summary>Watch the idea unfold &mdash; " + p.vizIntro.frames + " steps</summary>" +
+      '<div class="reveal-inner"><div class="viz-host"><p class="viz-loading">Loading animation&hellip;</p></div></div>' +
+    "</details>";
+  }
+
+  html += "<h2>" + (ladder ? "From recursion to optimal" : "Solutions") + "</h2>" +
+    (!ladder ? introVizBlock() : "");
   html += p.approaches.map(function (a, i) {
     var card = '<div class="approach' + (a.best ? " is-best" : "") + '">' +
       '<div class="approach-head">' +
@@ -234,8 +253,9 @@
       (a.explain ? explainTop(a.explain) : "") +
       '<pre class="code"><code>' + hl(a.code) + "</code></pre>" +
       (a.explain ? explainBottom(a.explain) : '<div class="why">' + points(a.why) + "</div>") +
+      vizBlock(i) +
     "</div>";
-    return card + (ladder && i === 0 ? recurrenceBlock(p.recurrence) : "");
+    return card + (ladder && i === 0 ? recurrenceBlock(p.recurrence) + introVizBlock() : "");
   }).join("");
 
   /* ---------- the assertions the build ran ---------- */
@@ -276,21 +296,31 @@
       '<button type="button" class="btn btn-sm" id="mock-end">End</button></div>' + html;
   }
   root.innerHTML = html;
-  /* animations live in their own file and load the first time the section is opened */
-  if (p.viz && window.renderViz) {
-    var vizReveal = document.getElementById("viz-reveal"), vizLoaded = false;
-    vizReveal.addEventListener("toggle", function () {
-      if (!vizReveal.open || vizLoaded) return;
-      vizLoaded = true;
-      fetch(p.viz.src).then(function (r) {
+  /* animations live in their own file, fetched once, the first time any is opened */
+  var vizFiles = {};
+  function loadViz(src) {
+    if (!vizFiles[src]) {
+      vizFiles[src] = fetch(src).then(function (r) {
         if (!r.ok) throw new Error(r.status);
         return r.json();
-      }).then(function (data) {
-        window.renderViz(document.getElementById("viz"), data);
-      }).catch(function () {
-        vizLoaded = false;
-        document.getElementById("viz").innerHTML =
-          '<p class="viz-loading">Could not load the animation. Serve the site over HTTP (e.g. <code>python3 -m http.server</code>) and try again.</p>';
+      });
+      vizFiles[src].catch(function () { delete vizFiles[src]; });
+    }
+    return vizFiles[src];
+  }
+  if (window.renderViz) {
+    Array.prototype.forEach.call(root.querySelectorAll("details[data-viz], details[data-viz-intro]"), function (d) {
+      var loaded = false;
+      d.addEventListener("toggle", function () {
+        if (!d.open || loaded) return;
+        loaded = true;
+        var host = d.querySelector(".viz-host"), intro = d.hasAttribute("data-viz-intro");
+        loadViz(intro ? p.vizIntro.src : p.viz.src).then(function (data) {
+          window.renderViz(host, intro ? data : { chapters: [data.chapters[+d.getAttribute("data-viz")]] });
+        }).catch(function () {
+          loaded = false;
+          host.innerHTML = '<p class="viz-loading">Could not load the animation. Serve the site over HTTP (e.g. <code>python3 -m http.server</code>) and try again.</p>';
+        });
       });
     });
   }

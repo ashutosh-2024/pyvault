@@ -255,7 +255,7 @@ window.GRAIL_DEEP = [
             "type": "code",
             "src": "import threading, time\n\nstock = {\"widget\": 1}\nsold = []\n\ndef buy(who):\n    if stock[\"widget\"] > 0:      # both threads see 1 ...\n        time.sleep(0.01)         # ... pretend to charge the card\n        stock[\"widget\"] -= 1\n        sold.append(who)\n\nts = [threading.Thread(target=buy, args=(n,)) for n in (\"ann\", \"bob\")]\nfor t in ts: t.start()\nfor t in ts: t.join()\nprint(sold, stock)",
             "label": null,
-            "output": "['bob', 'ann'] {'widget': -1}",
+            "output": "['ann', 'bob'] {'widget': -1}",
             "isError": false
           },
           {

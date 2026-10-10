@@ -72,22 +72,43 @@ from the cache, or a URL that does not match its slug.
 > That is their content; if you would rather not republish it, replace the
 > `statement` field per problem and the fetch becomes metadata-only.
 
+### Write-ups: explanation, dry runs, FAQ
+
+Every approach has a detailed write-up in [`content/explain/`](content/explain/),
+one module per topic (the schema is in `content/explain/__init__.py`). Each
+problem names two **worked examples**; each approach then carries the idea,
+the steps and why it works (at least eight pointers between them), one dry run
+per worked example, and at least three common doubts with answers. The build
+runs every approach on every worked example and fails if it does not return
+the stated result, so each dry run's conclusion is checked.
+
+On the problem page each approach is one card, in this order: idea, steps,
+code, why it works, dry run 1, dry run 2, common doubts, then that approach's
+own animation.
+
+`python3 check_explain.py <module> ...` validates write-ups without running
+the whole build, and `python3 dump_explain.py <module>` prints each problem's
+tests and approach code to write from.
+
 ### Step-by-step animations
 
-Every Dynamic Programming problem has an animation ("Watch the algorithm run"
-on the problem page). Generators live in [`content/viz/`](content/viz/), one
+Every approach has its own animation, shown at the end of its card.
+Every Dynamic Programming problem also has a hand-written walkthrough of the
+idea ("Watch the idea unfold", shown under the recurrence). Generators live in [`content/viz/`](content/viz/), one
 function per problem, registered in `content/viz/__init__.py`. They build
 frames by **running** the algorithm (with `_kit.py`'s `Board`, `Story` and
 `CallTrace` helpers) - no numbers are typed by hand - and `build.py` validates
-each animation, writes it to `assets/viz/<id>.json` (fetched only when a reader
+each animation, writes it to `assets/viz/<id>-intro.json` (fetched only when a reader
 opens the section) and fails if any problem in a topic listed in
 `REQUIRED_TOPICS` lacks one. The player is `assets/js/viz.js`.
 
-Every other problem gets an animation **traced from a real run**, with one
-chapter per approach: [`content/viz/auto.py`](content/viz/auto.py) runs each
+The per-approach animations are **traced from a real run**, one chapter per
+approach, for every problem: [`content/viz/auto.py`](content/viz/auto.py) runs each
 approach on its own tests under `sys.settrace`, picks one call that fits in
 about 110 steps (preferring calls written out in the tests over random ones),
-and turns every executed line into a frame. It works out what to draw from the
+and turns every executed line into a frame. It traces the write-up's first
+worked example when that fits in one chapter (then the second), so the
+animation replays a dry run the reader has just followed. It works out what to draw from the
 code and the live values:
 
 | what the code has | drawn as |
@@ -105,7 +126,7 @@ code and the live values:
 Each frame also shows the line that just ran (highlighted in the code), what it
 changed, the result of `if` / `while` conditions, the code's own comment for that
 line, the variables and the call stack. Problems with a hand-written generator
-above keep it.
+above show it as well, as the walkthrough of the idea.
 
 ### Adding a problem
 
@@ -118,6 +139,7 @@ Append to the relevant topic's `sections[...]["problems"]`:
 | `name`, `difficulty` | difficulty must match LeetCode's or the build fails |
 | `approaches` | `name`, `time`, `space`, `why`, `code`, `best`, `tag` |
 | `tests` | assertions run against **every** approach |
+| write-up | every approach also needs an entry in `content/explain/` (see above) |
 | `pitfall` | optional; the mistake people actually make |
 | `ref` | optional `(label, url)` for a non-LeetCode source, e.g. GeeksforGeeks |
 

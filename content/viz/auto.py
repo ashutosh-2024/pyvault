@@ -1402,11 +1402,32 @@ def fallback_chapter(title, ap, why):
 
 
 def build_problem(job):
-    """job: dict(id, head, tests, small_tests, approaches=[{name, code, small, time, space}])
-    -> viz dict, or an error string."""
+    """job: dict(id, head, tests, small_tests, examples, approaches=[{name, code, small, time, space}])
+    -> viz dict, or an error string.
+
+    Each approach is traced on the write-up's worked examples first (in order),
+    so the animation replays a dry run the reader has just followed; only when
+    neither example fits in one chapter does it fall back to the tests."""
     chapters = []
     for ap in job["approaches"]:
         title = plain_title(ap["name"])
+        done = False
+        for k, ex in enumerate(job.get("examples") or [], 1):
+            run = (ex.get("setup") or "") + f"\n__ex = ({ex['call']})\n"
+            try:
+                src, segs = trace(job["head"], ap["code"], run)
+            except Exception:                                    # pragma: no cover
+                continue
+            fits = [s for s in segs if not s.truncated and len(s.events) >= MIN_EVENTS]
+            if not fits or any(s.truncated for s in segs):
+                continue
+            ch = chapter(title, ap, src, max(fits, key=lambda s: len(s.events)))
+            ch["example"] = k
+            chapters.append(ch)
+            done = True
+            break
+        if done:
+            continue
         tests = job["small_tests"] if ap.get("small") else job["tests"]
         try:
             src, segs = trace(job["head"], ap["code"], tests)

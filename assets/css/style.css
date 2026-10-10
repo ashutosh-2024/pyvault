@@ -1465,3 +1465,16 @@ kbd {
 .ex-dry h4 { margin-top: 8px; }
 .ex-call { margin: 0 0 12px; }
 .ex-result { margin: 10px 0 0; font-size: 0.9rem; color: var(--text-dim); }
+.ex-faq { margin-top: 18px; }
+.faq-item { border: var(--bw-thin) solid var(--line-2); background: var(--bg-2); margin: 0 0 6px; }
+.faq-item summary {
+  cursor: pointer; padding: 8px 12px; font-size: 0.93rem; color: var(--text); list-style: none;
+}
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::before { content: "Q"; font-family: var(--mono); font-size: 0.72rem; color: var(--accent-fg); margin-right: 10px; }
+.faq-item[open] summary { border-bottom: var(--bw-thin) solid var(--line-2); }
+.faq-item p { margin: 0; padding: 10px 12px 12px 34px; color: var(--text-dim); font-size: 0.92rem; line-height: 1.6; }
+.ap-viz { margin-top: 18px; }
+.viz-host .viz-tabs:has(.viz-tab:only-child) { display: none; }
+.io-why { white-space: pre-line; }
+.io-why.io-table { white-space: pre; font-family: var(--mono); font-size: 0.8rem; overflow-x: auto; display: block; }

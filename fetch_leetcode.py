@@ -115,11 +115,15 @@ def parse(content: str) -> dict:
         got = {}
         for label, key in (("Input", "input"), ("Output", "output"),
                            ("Explanation", "explanation")):
+            # each field starts a line; its value runs to the next field's label
             m = re.search(
-                rf"{label}\s*:?\s*\n?(.*?)(?=\n\s*(?:Input|Output|Explanation)\s*:?\s*\n|\Z)",
+                rf"(?:^|\n)\s*{label}\s*:\s*(.*?)(?=\n\s*(?:Input|Output|Explanation)\s*:|\Z)",
                 text, re.S)
             if m:
-                value = " ".join(m.group(1).split())
+                if key == "explanation":     # keep line breaks: some explanations are tables
+                    value = "\n".join(line.rstrip() for line in m.group(1).strip().splitlines())
+                else:
+                    value = " ".join(m.group(1).split())
                 if value:
                     got[key] = value
         record(got)
